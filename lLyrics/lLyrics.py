@@ -17,6 +17,7 @@ import threading
 import webbrowser
 import sys
 import unicodedata
+import eyed3
 
 from threading import Thread
 
@@ -38,6 +39,7 @@ import LyricsmaniaParser
 import DarklyricsParser
 import GeniusParser
 import VagalumeParser
+import MetadataParser
 import Util
 
 from lLyrics_rb3compat import ActionGroup
@@ -94,7 +96,7 @@ LYRICS_TITLE_REPLACE = [("/", "-"), (" & ", " and ")]
 LYRICS_ARTIST_REPLACE = [("/", "-"), (" & ", " and ")]
 
 LYRICS_SOURCES = ["Lyricwiki.org", "Letras.terra.com.br", "Metrolyrics.com", "AZLyrics.com", "Lyricsmania.com",
-                  "Vagalume.com.br", "Genius.com", "Darklyrics.com", "Chartlyrics.com"]
+                  "Vagalume.com.br", "Genius.com", "Darklyrics.com", "Chartlyrics.com", "File metadata"]
 
 
 class lLyrics(GObject.Object, Peas.Activatable):
@@ -117,7 +119,7 @@ class lLyrics(GObject.Object, Peas.Activatable):
                           "Metrolyrics.com": MetrolyricsParser, "AZLyrics.com": AZLyricsParser,
                           "Lyricsmania.com": LyricsmaniaParser, "Chartlyrics.com": ChartlyricsParser,
                           "Darklyrics.com": DarklyricsParser, "Genius.com": GeniusParser,
-                          "Vagalume.com.br": VagalumeParser})
+                          "Vagalume.com.br": VagalumeParser, "File metadata": MetadataParser})
         self.add_builtin_lyrics_sources()
 
         # Get the user preferences
@@ -479,8 +481,9 @@ class lLyrics(GObject.Object, Peas.Activatable):
 
         (self.clean_artist, self.clean_title) = self.clean_song_data(self.artist, self.title)
         self.path = self.build_cache_path(self.clean_artist, self.clean_title)
-
+        self.filepath = "testing"
         self.scan_all_sources(self.clean_artist, self.clean_title, True)
+        
 
     def clean_song_data(self, artist, title):
         # convert to lowercase
@@ -813,7 +816,10 @@ class lLyrics(GObject.Object, Peas.Activatable):
         print("source: " + source)
         self.current_source = source
 
-        parser = self.dict[source].Parser(artist, title)
+        try:
+            parser = self.dict[source].Parser(artist, title)
+        except:
+            pass
         try:
             lyrics = parser.parse()
         except Exception as e:
@@ -827,8 +833,22 @@ class lLyrics(GObject.Object, Peas.Activatable):
 
             if self.cache:
                 self.write_lyrics_to_cache(path, lyrics)
-
-        return lyrics
+                
+        #file metadata
+        if source == "File metadata":
+            playing_entry = self.player.get_playing_entry()
+            try: file = eyed3.load(playing_entry.get_string(RB.RhythmDBPropType.LOCATION)[7:].replace("%20"," ").strip())
+            except Exception as e:
+                return(str(e))
+            if file is None:
+                return("file doesn't exist")
+            existing_lyrics = ""
+            try:
+                for lyric in file.tag.lyrics:
+                    existing_lyrics += lyric.text
+            except:
+                pass
+            return(existing_lyrics)
 
     def show_lyrics(self, lyrics):
         if self.current_source is None:
